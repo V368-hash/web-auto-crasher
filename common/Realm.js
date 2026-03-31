@@ -1,9 +1,9 @@
 const XboxAPI = require("./Xbox");
 
-const headers = {
+let headers = {
   "Accept": "*/*",
   "charset": "utf-8",
-  "client-ref": "15737c809ed75cbc4a361ffa3c5c2df76ff78d42",
+  "client-ref": "5557b51c31f30d28e93ddeeb2282f77c75af2b95",
   "client-version": "26.10.0",
   "x-clientplatform": "Windows",
   "x-networkprotocolversion": "924",
@@ -66,6 +66,9 @@ class realmAPI {
     try {
       this.retryCount = 0;
 
+      headers["client-version"] = "26.10.0";
+      headers["x-networkprotocolversion"] = "924";
+
       while (true) {
         const response = await fetch(`https://bedrock.frontendlegacy.realms.minecraft-services.net/worlds/${realmID}/join`, {
           method: "GET",
@@ -73,22 +76,22 @@ class realmAPI {
             ...headers,
             "authorization": this.authToken
           },
-          timeout: AbortSignal.timeout(15000)
+          timeout: AbortSignal.timeout(10000)
         });
 
         switch (response.status) {
           case 200:
             this.retryCount++;
 
-            callback(this.retryCount)
+            callback(this.retryCount);
 
-            return await response.json();
+            await delay(10000);
           case 503:
             this.retryCount++;
 
-            callback(this.retryCount)
+            callback(this.retryCount);
 
-            await delay(10000)
+            await delay(10000);
             break;
           case 403:
             return response.status;
@@ -100,9 +103,9 @@ class realmAPI {
     } catch {
       this.retryCount++;
 
-      callback(this.retryCount)
+      callback(this.retryCount);
 
-      await delay(10000)
+      await delay(10000);
     }
   }
 
@@ -114,8 +117,6 @@ class realmAPI {
         "authorization": this.authToken,
       }
     });
-
-    console.log(response.status)
 
     if (response.status !== 200) {
       console.log(`Error: ${response.status} ${response.statusText} ${await response.text()} joinRealm, ${code}`);
@@ -129,8 +130,8 @@ class realmAPI {
   }
 
   async leaveRealm(id) {
-    const response = await fetch(`https://bedrock.frontendlegacy.realms.minecraft-services.net/invites/v1/link/accept/${code}`, {
-      method: "POST",
+    const response = await fetch(`https://bedrock.frontendlegacy.realms.minecraft-services.net/invites/${id}`, {
+      method: "DELETE",
       headers: {
         ...headers,
         "authorization": this.authToken,
@@ -148,29 +149,26 @@ class realmAPI {
     return data
   }
 
-  async checkRealmState(realm) {
-    if (typeof realm === "undefined") {
-      console.log(`Couldn't find target, did you get kicked?`, realm);
-      return process.exit(1);
+  async getRealmInfo(code) {
+    const response = await fetch(`https://bedrock.frontendlegacy.realms.minecraft-services.net/worlds/v1/link/${code}`, {
+      method: "GET",
+      headers: {
+        ...headers,
+        "authorization": this.authToken
+      }
+    });
+
+    if (response.status !== 200) {
+      console.log(`Error: ${response.status} ${response.statusText} ${await response.text()}, getRealmInfo`);
+
+      return response.status;
     }
 
-    let realms = await this.getRealms();
+    let data = await response.json();
 
-    realm = realms.find(r => r.id === realm.id);
+    if (!data.member) return await this.joinRealm(code)
 
-    switch (realm.state) {
-      case "CLOSED":
-        console.log(`${realm.name} is closed!`);
-
-        await delay(45000);
-
-        return this.checkRealmState(realm);
-      case "OPEN":
-      default:
-        console.log(`${realm.name} is open!`);
-
-        return realm;
-    }
+    return data
   }
 
   async getRealmInfoByID(realmID) {
